@@ -1,0 +1,22 @@
+{
+  "name": "krow",
+  "version": "0.0.1",
+  "description": "Track working times from command line",
+  "main": "index.js",
+  "scripts": {
+    "test": "test"
+  },
+  "author": "",
+  "license": "ISC",
+  "preferGlobal": "true",
+  "bin": {
+    "krow": "krow.js"
+  },
+  "dependencies": {
+    "chokidar": "^1.1.0",
+    "daemon-pid": "^1.0.0-b.3",
+    "inherit-array": "^0.1.3",
+    "mkdirp": "^0.5.1",
+    "node-mkdirp": "0.0.1"
+  }
+}

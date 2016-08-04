@@ -4,42 +4,7 @@ var
   path = require('path'), 
   mkdirp = require('mkdirp'),
   spawn = require('child_process').spawn,
-  // File helpers
-  exists = function(file) {
-    return fs.existsSync(file);
-  },
-  createDir = function(dir) {
-    if (!fs.existsSync(dir)) {
-      mkdirp.sync(dir);
-    };
-  },
-  readFile = function(file) {
-    var data = fs.readFileSync(file);
-    return data && data.toString();
-  },
-  writeFile = function(file, data, encoding) {
-    console.log("write file: ", file);
-    encoding = encoding || 'utf8';
-    unlink(file);
-    options = {
-      flag: 'w+'
-    };
-    // Create dir if not exists
-    createDir(path.dirname(file));
-    // Actually write file
-    fs.writeFileSync(file, data, options);
-  },
-  open = function(file, mode) {
-    // Create dir if not exists
-    createDir(path.dirname(file));
-    // Open and return file reference
-    return fs.openSync(file, mode);
-  },
-  unlink = function(file) {
-    if (fs.existsSync(file)) {
-      fs.unlinkSync(file);
-    }
-  },
+  file = require('./util/file'),
   // Variables
   cwd = process.cwd(),
   home = cwd || os.homedir(),
@@ -63,15 +28,15 @@ Daemon.prototype = {
     var
       pidFile = this.pidFile,
       pid;
-    if (exists(pidFile)) {
-      pid = readFile(pidFile);
+    if (file.exists(pidFile)) {
+      pid = file.readFile(pidFile);
       if (pid) {
         // Check if a process with this id is actually running, otherwise delete pid file
         try {
           process.kill(pid, 0);
           return true;
         } catch(e) {
-          unlink(pidFile);
+          file.unlink(pidFile);
           return false;
         }
       }
@@ -79,38 +44,38 @@ Daemon.prototype = {
     return false;
   },
   start: function() {
-    console.log("start");
     var
-      logDir = path.dirname(this.logFile),
       pidFile = this.pidFile,
-      out,
-      child;
-    
-    // Open file for logging 
-    out = open(this.logFile, 'a');
+      logDir = this.logFile && path.dirname(this.logFile),
+      out = this.logFile && file.open(this.logFile, 'a'),
+      child,
+      options = {
+        detached: true,
+        env: process.env
+      };
     
     // Check daemon state and start
     if (this.isRunning()) {
       // Service is already running.
       console.log("Service is already running...");
     } else {
+      if (out) {
+        console.log("Logging to " + this.logFile);
+        options.stdio = ['ignore', out, out];
+      }
       // Actually start service...
       console.log("Start service...");
       // Spawn the child process
-      child = spawn('node', [path.join(__dirname, this.script)], {
-        detached: true,
-        stdio: ['ignore', out, out],
-        env: process.env
-      });
+      child = spawn('node', [path.join(__dirname, this.script)], options);
       
       // Write pid file
-      writeFile(pidFile, child.pid);
+      file.writeFile(pidFile, child.pid);
       
       // Remove the pid file on close
       child.on('close', function(code) {
         // Child process has been closed
         console.log("Child process has been closed");
-        unlink(pidFile);
+        file.unlink(pidFile);
       });
       
       // On SIGTERM delete the pid file
@@ -118,7 +83,7 @@ Daemon.prototype = {
         // Parent process is about to exit
         console.log("Service stopped.");
         // Delete pid file
-        unlink(pidFile);
+        file.unlink(pidFile);
         child.exit(-1);
       }
       process.on('SIGINT', cleanExit); // catch ctrl-c
@@ -144,7 +109,7 @@ Daemon.prototype = {
       console.log('Service is not running');
     } else {
       // Kill process
-      pid = readFile(pidFile);
+      pid = file.readFile(pidFile);
       try {
         process.kill(pid, "SIGTERM");
         callback(false);

@@ -7,47 +7,23 @@ var
   path = require('path'), 
   mkdirp = require('node-mkdirp'),
   cwd = process.cwd(),
-  home = cwd,
-  watchlist = require('./watchlist')(path.join(home, '.krow', 'watchlist'));
+  home = path.join(os.homedir(), '.krow'),
+  watchlist = require('./watchlist')(path.join(home, 'watchlist')).observe(),
+  observers = {};
+  
 
 
-// Observe watchlist
-
-
-function update() {
-  //console.log("....alive: ", new Date());
+function Observer(dir) {
+  this.dir = dir;
+  this.watcher = null;
+  this.start();
 }
 
-function start() {
-  console.log("Start server");
-  try {
-    var port = 8004;
-    http.createServer(function (req, res) {
-      res.writeHead(200, {'Content-Type': 'text/plain'});
-      var content = fs.readFileSync(path.join(DATA_DIR, 'out.log'));
-      res.write(content);
-      res.end();
-    }).listen(port);
-  } catch(e) {
-    console.log("Error: ", e);
-  }
-  console.log('Server running at http://127.0.0.1:' + port + '/');
-  watch();
-  setInterval(function () {  
-    update();
-  }, 2000);
-}
-
-function emitEvent(e) {
-  console.log(new Date() + ": " + e.type, e.message);
-}
-
-function watch() {
-  // One-liner
-  var dir = cwd;
-  console.log("Watching " + dir + ".");
-  var ready = false;
-  chokidar.watch(dir, {ignored: /\.krow\/.*/})
+Observer.prototype.start = function() {
+  var
+    ready = false;
+  
+  this.watcher = chokidar.watch(this.dir, {ignored: /\.krow\/.*/})
     .on('all', function(event, path) {
       if (ready) {
         emitEvent({type: "file." + event, message: path});
@@ -56,6 +32,36 @@ function watch() {
     .on('ready', function() {
       ready = true;
     });
+};
+
+Observer.prototype.stop = function() {
+  if (this.watcher) {
+    // Stop watcher
+    console.log("STOP WATCHER");
+  }
+};
+
+// Observe watchlist
+watchlist.forEach(function(dir) {
+  observers[dir] = new Observer(dir);
+});
+  
+watchlist.on('add', function(dir) {
+  observers[dir] = observers[dir] || new Observer(dir);
+  console.log("WATCH DIR HAS BEEN ADDED: ", observers);
+});
+
+watchlist.on('remove', function(dir) {
+  console.log("WATCH DIR HAS BEEN REMOVED: ", observers);
+  if (observers[dir]) {
+    observers[dir].stop();
+  }
+  delete observers[dir];
+});
+
+function emitEvent(e) {
+  console.log(new Date() + ": " + e.type, e.message);
 }
 
-start();
+
+require('./server')(9384).start();

@@ -1,47 +1,13 @@
 var
   os = require('os'),
   fs = require('fs'),
+  modelo = require('modelo'),
   path = require('path'), 
+  events = require('events'),
+  EventEmitter = events.EventEmitter,
   mkdirp = require('mkdirp'),
-  // File helpers
-  exists = function(file) {
-    return fs.existsSync(file);
-  },
-  createDir = function(dir) {
-    if (!fs.existsSync(dir)) {
-      mkdirp.sync(dir);
-    };
-  },
-  readFile = function(file) {
-    var data = fs.readFileSync(file);
-    return data && data.toString();
-  },
-  writeFile = function(file, data, encoding) {
-    encoding = encoding || 'utf8';
-    unlink(file);
-    options = {
-      flag: 'w+'
-    };
-    // Create dir if not exists
-    createDir(path.dirname(file));
-    // Actually write file
-    fs.writeFileSync(file, data, options);
-  },
-  open = function(file, mode) {
-    // Create dir if not exists
-    createDir(path.dirname(file));
-    // Open and return file reference
-    return fs.openSync(file, mode);
-  },
-  unlink = function(file) {
-    if (fs.existsSync(file)) {
-      fs.unlinkSync(file);
-    }
-  };
-  // Variables
-  cwd = process.cwd(),
-  home = cwd || os.homedir();
-  
+  chokidar = require('chokidar'),
+  file = require('./util/file');
   
 // Watchlist Class
 function Watchlist(file) {
@@ -49,45 +15,85 @@ function Watchlist(file) {
   this.reload();
 }
 
-Watchlist.prototype = new Array();
+
+modelo.inherits(Watchlist, Array, EventEmitter);
+
+Watchlist.prototype.observe = function() {
+  var
+    file = this.file,
+    watchlist = this.reload() && this,
+    ready = false;
+  
+  chokidar.watch(this.file)
+    .on('change', function(event, data) {
+      // Get the changes
+      var cached = watchlist.slice();
+      watchlist.reload();
+      watchlist.filter(function(dir) {
+        return cached.indexOf(dir) === -1;
+      }).forEach(function(dir) {
+        watchlist.emit('add', dir);
+      })
+      cached.filter(function(dir) {
+        return watchlist.indexOf(dir) === -1
+      }).forEach(function(dir) {
+        watchlist.emit('remove', dir);
+      });
+      watchlist.emit('change');
+    });
+  this.observe = function() {
+    console.log("Observation has already been started on this object");
+  };
+  return this;
+}
 
 Watchlist.prototype.reload = function() {
   var result = [];
-  if (!exists(this.file)) {
-    writeFile(this.file, "");
+  if (!file.exists(this.file)) {
+    file.writeFile(this.file, "");
   }
-  var data = readFile(this.file);
-  if (data) {
-    result = data.split(os.EOL).filter (function (v, i, a) { return a.indexOf (v) == i });
+  var data = file.readFile(this.file);
+  if (data !== null) {
+    // Refresh items
+    result = data.split(os.EOL).filter (function (v, i, a) { return v && a.indexOf (v) === i});
     this.splice(0, this.length);
     Watchlist.prototype.push.apply(this, result);
   }
+  return this;
 }
 
 Watchlist.prototype.add = function(dir) {
   this.reload();
-  if (this.indexOf(dir) === -1) {
-    console.log("Watch " + dir);
-    this.push(dir);
-    writeFile(this.file, this.join(os.EOL));
+  if (!file.exists(dir)) {
+    console.log(dir + ' does not exist');
+  } else if (this.indexOf(dir) >= 0) {
+    console.warn(dir + " is already being watched");
   } else {
-    // Is already being watched
-    console.log(dir + " is already being watched");
+    console.log("Watching " + dir, this.file);
+    this.push(dir);
+    file.writeFile(this.file, this.join(os.EOL));
   }
+  return this;
 };
 
 Watchlist.prototype.remove = function(dir) {
   this.reload();
   var index = this.indexOf(dir);
   if (index >= 0) {
-    console.log("Unwatch " + dir);
+    console.log("Stop watching " + dir);
     this.splice(index, 1);
-    writeFile(this.file, this.join(os.EOL));
+    file.writeFile(this.file, this.join(os.EOL));
   } else {
     // Not being watched
     console.log(dir + " is not being watched");
   }
+  return this;
 };
+
+Watchlist.prototype.removeAll = function() {
+  file.writeFile(this.file, "");
+  this.reload();
+}
 
 module.exports = function(file) {
   return new Watchlist(file);

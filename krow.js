@@ -3,51 +3,73 @@
 var
   os = require('os'),
   fs = require('fs'),
-  path = require('path'); 
+  path = require('path'),
+  minimist = require('minimist'),
+  
   // 
   cwd = process.cwd(),
-  home = os.homedir(),
-  dir = path.join(cwd, '.krow'),
-  command = process.argv[2],
+  home = path.join(os.homedir(), '.krow'),
+  //command = process.argv[2],
+  argv = minimist(process.argv.slice(2)),
+  commands = argv['_'],
+  command = argv['_'][0],
+  options = argv,
   daemon = new (require('./daemon.js'))(
     // Script
     'watch.js',
     // PidFile
-    path.join(dir, 'pid'),
+    path.join(home, 'pid'),
     // Logfile
-    path.join(dir, 'out.log')
+    path.join(home, 'out.log')
   ),
-  watchlist = require('./watchlist')(path.join(home, '.krow', 'watchlist'));
-  
+  watchlist = require('./watchlist')(path.join(home, 'watchlist'));
+
+console.log("run krow with command: ", command, " options: ", argv);
+
 switch (command) {
   case 'start':
       // start the server
+      daemon.logFile = typeof options.d === 'string'  ? options.d : options.d ? path.join(home, 'debug.log') : null;
+      console.log("daemon.logFile: ", daemon.logFile); 
       daemon.start();
       break;
 
   case 'stop':
-      // stop the server
+      // Stop daemon
       daemon.stop();
       break;
 
   case 'status':
-      // print-out server status
+      // Print-out daemon status
       daemon.status();
       break;
       
   case 'restart':
-      // print-out server status
+      // Restart daemon
       daemon.restart();
       break;
   case 'watch':
-      // print-out server status
-      watchlist.add(process.cwd());
+      // Add directory to watchlist
+      watchlist.add(commands[1] && path.resolve(process.cwd(), commands[1]) || process.cwd());
       break;
   case 'unwatch':
-      // print-out server status
-      watchlist.remove(process.cwd());
+      // Remove directory from watchlist
+      if (options.a) {
+        watchlist.removeAll();
+      } else {
+        watchlist.remove(commands[1] && path.resolve(process.cwd(), commands[1]) || process.cwd());
+      }
+      break;
+  case 'list':
+      // Log watched directories
+      if (watchlist.length) {
+        console.log("Currently watched directories:", watchlist.join(', '));
+        console.log(watchlist.join(os.EOL));
+      } else {
+        console.log("Watchlist is empty");
+      }
       break;
 
   default:
-      console.error('Usage: krow [start] [stop] [status]');
+      console.log('Usage: krow [start] [stop] [status] [list]');
 }
